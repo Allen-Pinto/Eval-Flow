@@ -9,22 +9,44 @@
 
 **Enterprise-grade AI Agent Evaluation Platform with real-time analytics and multi-tenant security**
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/Eval-Flow)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Allen-Pinto/Eval-Flow)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
+
+## 📋 Submission Package
+
+### 🚀 Deployed Application
+- **Live URL**: [https://eval-flow.vercel.app](https://eval-flow.vercel.app)
+- **Test Credentials**:
+  - Email: `test@example.com`
+  - Password: `password123`
+
+### 📂 GitHub Repository
+- **Public Repository**: [https://github.com/Allen-Pinto/Eval-Flow](https://github.com/Allen-Pinto/Eval-Flow)
+- **Features**: Complete authentication, dashboard, RLS policies, and sample data
+
+### 🛠️ AI Tools Used
+- **Claude Code**: Primary development assistant for architecture design, code generation, and debugging
+- **Usage**: 
+  - Generated database schema and RLS policies
+  - Assisted with Next.js 14 App Router implementation
+  - Helped debug authentication flows and deployment issues
+  - Created comprehensive documentation and seed scripts
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Features](#features)
 - [Architecture](#architecture)
+- [Database Schema](#database-schema)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [API Documentation](#api-documentation)
 - [Development](#development)
 - [Deployment](#deployment)
+- [Seed Data](#seed-data)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -79,6 +101,85 @@ Data Layer
 └── Automated Backups
 ```
 
+## Database Schema
+
+### Tables Structure
+
+#### Profiles Table
+```sql
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT UNIQUE NOT NULL,
+  full_name TEXT,
+  organization TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### Evaluation Configs Table
+```sql
+CREATE TABLE evaluation_configs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  run_policy TEXT CHECK (run_policy IN ('always', 'sampled')),
+  sample_rate_pct INT CHECK (sample_rate_pct >= 0 AND sample_rate_pct <= 100),
+  obfuscate_pii BOOLEAN DEFAULT false,
+  max_eval_per_day INT DEFAULT 1000,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+```
+
+#### Evaluations Table
+```sql
+CREATE TABLE evaluations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  interaction_id TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  response TEXT NOT NULL,
+  score NUMERIC CHECK (score >= 0 AND score <= 100),
+  latency_ms INT NOT NULL,
+  flags TEXT[] DEFAULT '{}',
+  pii_tokens_redacted INT DEFAULT 0,
+  prompt_masked TEXT,
+  response_masked TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### Audit Logs Table
+```sql
+CREATE TABLE audit_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  resource_type TEXT,
+  resource_id UUID,
+  details JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Row Level Security (RLS) Policies
+
+All tables have RLS enabled with the following policies:
+
+#### Profiles Policies
+- Users can view and update only their own profile
+
+#### Evaluation Configs Policies  
+- Users can view, insert, and update only their own configs
+
+#### Evaluations Policies
+- Users can view, insert, and update only their own evaluations
+
+#### Audit Logs Policies
+- Users can view and insert only their own audit logs
+
 ## Quick Start
 
 ### Prerequisites
@@ -88,7 +189,7 @@ Data Layer
 
 ### One-Click Deployment
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/Eval-Flow)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Allen-Pinto/Eval-Flow)
 
 ## Installation
 
@@ -96,7 +197,7 @@ Data Layer
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/your-username/Eval-Flow.git
+git clone https://github.com/Allen-Pinto/Eval-Flow.git
 cd Eval-Flow
 ```
 
@@ -133,18 +234,66 @@ Visit `http://localhost:3000` to access the application.
 ### Supabase Setup
 
 1. **Create a new project** at [supabase.com](https://supabase.com)
-2. **Run database schema** from `/supabase/migrations/` 
+2. **Run database schema** from the SQL below
 3. **Configure authentication** settings
 4. **Set up Row-Level Security** policies
 
-### Environment Variables
+### Complete Database Setup Script
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key | No |
-| `NEXT_PUBLIC_SITE_URL` | Application base URL | Yes |
+```sql
+-- Enable extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+-- Create tables (see Database Schema section above)
+
+-- Enable Row Level Security
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE evaluation_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE evaluations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS Policies (see RLS Policies section above)
+
+-- Create indexes for performance
+CREATE INDEX evaluations_user_id_created_at ON evaluations(user_id, created_at DESC);
+CREATE INDEX evaluations_user_id_score ON evaluations(user_id, score);
+CREATE INDEX evaluations_user_id_latency ON evaluations(user_id, latency_ms);
+CREATE INDEX evaluations_interaction_id ON evaluations(interaction_id);
+CREATE INDEX audit_logs_user_id ON audit_logs(user_id, created_at DESC);
+```
+
+## Seed Data
+
+### Generate Sample Data for Testing
+
+Run this SQL script in your Supabase SQL Editor to create test data:
+
+```sql
+-- Seed script: Generate sample evaluation data for testing
+INSERT INTO evaluations (user_id, interaction_id, prompt, response, score, latency_ms, pii_tokens_redacted, created_at)
+SELECT 
+  '{{USER_ID}}'::uuid,
+  'interaction_' || seq,
+  'Test prompt ' || seq || ' - What is machine learning?',
+  'Test response ' || seq || ' - Machine learning is a subset of AI that enables systems to learn and improve from experience without explicit programming.',
+  (RANDOM() * 40 + 60)::numeric(4,1), -- Random score between 60-100
+  (RANDOM() * 200 + 100)::integer, -- Random latency between 100-300ms
+  (RANDOM() * 5)::integer, -- Random PII redactions 0-4
+  NOW() - (seq * INTERVAL '1 hour')
+FROM GENERATE_SERIES(1, 50) seq;
+
+-- Create sample evaluation config
+INSERT INTO evaluation_configs (user_id, run_policy, sample_rate_pct, obfuscate_pii, max_eval_per_day)
+VALUES ('{{USER_ID}}', 'always', 100, true, 1000)
+ON CONFLICT (user_id) DO UPDATE SET
+  run_policy = EXCLUDED.run_policy,
+  sample_rate_pct = EXCLUDED.sample_rate_pct,
+  obfuscate_pii = EXCLUDED.obfuscate_pii,
+  max_eval_per_day = EXCLUDED.max_eval_per_day;
+```
+
+**Note**: Replace `{{USER_ID}}` with an actual user ID from your `profiles` table.
 
 ## API Documentation
 
@@ -226,14 +375,6 @@ npm run lint         # Run ESLint
 npm run type-check   # Run TypeScript compiler
 ```
 
-### Database Schema
-
-Key tables include:
-- `profiles` - User profile information
-- `evaluation_configs` - User evaluation policies
-- `evaluations` - Evaluation results and metrics
-- `audit_logs` - System audit trail
-
 ## Deployment
 
 ### Vercel Deployment
@@ -242,24 +383,14 @@ Key tables include:
 2. **Configure environment variables**
 3. **Deploy automatically** on git push
 
-### Environment-Specific Configuration
+### Environment Variables for Production
 
-**Development:**
+**Required Variables:**
 ```env
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SITE_URL=https://your-app.vercel.app
 ```
-
-**Production:**
-```env
-NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
-```
-
-### Build Optimization
-
-- Automatic code splitting
-- Image optimization
-- CSS minimization
-- Tree shaking for unused code
 
 ## Contributing
 
@@ -286,9 +417,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- [Documentation](https://github.com/your-username/Eval-Flow/wiki)
-- [Issue Tracker](https://github.com/your-username/Eval-Flow/issues)
-- [Discussions](https://github.com/your-username/Eval-Flow/discussions)
+- [Documentation](https://github.com/Allen-Pinto/Eval-Flow/wiki)
+- [Issue Tracker](https://github.com/Allen-Pinto/Eval-Flow/issues)
+- [Discussions](https://github.com/Allen-Pinto/Eval-Flow/discussions)
 
 ---
 
@@ -296,6 +427,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Eval-Flow** - *Evaluate your AI agents with confidence*
 
-[Documentation](https://github.com/your-username/Eval-Flow/wiki) • [Demo](https://eval-flow.vercel.app) • [Report Bug](https://github.com/your-username/Eval-Flow/issues)
+[Live Demo](https://eval-flow.vercel.app) • [Documentation](https://github.com/Allen-Pinto/Eval-Flow/wiki) • [Report Bug](https://github.com/Allen-Pinto/Eval-Flow/issues)
+
+*Built with Claude Code AI assistance*
 
 </div>
+```
